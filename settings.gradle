@@ -1,0 +1,2 @@
+rootProject.name = "HbCamera"
+include ':app'
