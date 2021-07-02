@@ -62,6 +62,6 @@
             android:id="@+id/btn_takePic"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="获取视频帧数据" />
+            android:text="开始检测人脸" />
     </LinearLayout>
 </merge>
