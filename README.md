@@ -14,14 +14,15 @@ MTCNN For Android Java
 视频中检测人脸，不依赖任何opencv等第三方库。。
 
 Result:
-![Screenshot_2021-07-01-18-58-17-636_HbCamera](https://user-images.githubusercontent.com/17959876/124116086-2331fb00-daa1-11eb-9299-e81fa0b42ed6.png)
+![Screenshot_2021-07-02-11-30](https://user-images.githubusercontent.com/17959876/124216894-c890b180-db29-11eb-9c0f-4d906e424afd.png)
+
 
 加载项目，点击按钮，检测人脸并画框和关键点。
 必须加依赖：
 dependencies {
     compile 'org.tensorflow:tensorflow-android:+'
 }
-检测速度有一点慢，研究中。。。
+
 
 参考：https://github.com/vcvycy/MTCNN4Android#mtcnn4android-1
 
