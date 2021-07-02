@@ -1,6 +1,7 @@
 package com.hibay.hbcamera;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -10,13 +11,21 @@ import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.graphics.YuvImage;
 import android.hardware.Camera;
+import android.os.Build;
 import android.os.Bundle;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.ScriptIntrinsicYuvToRGB;
+import android.renderscript.Type;
+import android.util.Log;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -41,8 +50,6 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
         initData();
         initListener();
         mtcnn=new MTCNN(getAssets());
-
-
     }
 
     private void initListener() {
@@ -82,10 +89,7 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
         }else {
             ActivityCompat.requestPermissions(this,new String[]{Manifest.permission.CAMERA},1);
         }
-//————————————————
-//        版权声明：本文为CSDN博主「你这个橘子不要皮」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
-//        原文链接：https://blog.csdn.net/qq_40740256/article/details/84101015
-//
+
         mCamera = Camera.open(1);
         if (mCamera != null) {
             // 设置相机预览宽高，此处设置为TextureView宽高
@@ -109,37 +113,72 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
         }
     }
 
+
+    public class NV21ToBitmap {
+        private RenderScript rs;
+        private ScriptIntrinsicYuvToRGB yuvToRgbIntrinsic;
+        private Type.Builder yuvType, rgbaType;
+        private Allocation in, out;
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
+        public NV21ToBitmap(Context context) {
+            rs = RenderScript.create(context);
+            yuvToRgbIntrinsic = ScriptIntrinsicYuvToRGB.create(rs, Element.U8_4(rs));
+        }
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
+        public Bitmap nv21ToBitmap(byte[] nv21, int width, int height){
+            if (yuvType == null){
+                yuvType = new Type.Builder(rs, Element.U8(rs)).setX(nv21.length);
+                in = Allocation.createTyped(rs, yuvType.create(), Allocation.USAGE_SCRIPT);
+                rgbaType = new Type.Builder(rs, Element.RGBA_8888(rs)).setX(width).setY(height);
+                out = Allocation.createTyped(rs, rgbaType.create(), Allocation.USAGE_SCRIPT);
+            }
+            in.copyFrom(nv21);
+            yuvToRgbIntrinsic.setInput(in);
+            yuvToRgbIntrinsic.forEach(out);
+            Bitmap bmpout = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            out.copyTo(bmpout);
+            return bmpout;
+        }
+    }
+
     private void addCallBack() {
         if(mCamera!=null){
             mCamera.setPreviewCallback(new Camera.PreviewCallback() {
+                @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR1)
                 @Override
                 public void onPreviewFrame(byte[] data, Camera camera) {
                     Camera.Size size = camera.getParameters().getPreviewSize();
                     try{
-                        YuvImage image = new YuvImage(data, ImageFormat.NV21, size.width, size.height, null);
-                        if(image!=null){
-                            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-                            image.compressToJpeg(new Rect(0, 0, size.width, size.height), 50, stream);
-                            Bitmap bmp = BitmapFactory.decodeByteArray(stream.toByteArray(), 0, stream.size());
-                            //旋转
-                            Matrix matrix = new Matrix();
-                            // 缩放原图
-                            matrix.postScale(1f, 1f);
-                            // 向左旋转45度，参数为正则向右旋转
-                            matrix.postRotate(-90);
-                            //bmp.getWidth(), 500分别表示重绘后的位图宽高
-                            Bitmap dstbmp = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(),
-                                    matrix, true);
+                        long startTime= System.currentTimeMillis(); //起始时间
 
-                            Vector<Box> boxes=mtcnn.detectFaces(dstbmp,80);
-                            for (int i=0;i<boxes.size();i++){
-                                Utils.drawRect(dstbmp,boxes.get(i).transform2Rect());
-                                Utils.drawPoints(dstbmp,boxes.get(i).landmark);
-                            }
+                        NV21ToBitmap ff=new NV21ToBitmap(getBaseContext()) ;
+                        Bitmap bmp =ff.nv21ToBitmap(data,size.width, size.height);
 
-                            ivPic.setImageBitmap(dstbmp);
-                            stream.close();
+                        //旋转
+                        Matrix matrix = new Matrix();
+                        // 缩放原图
+                        matrix.postScale(1/8f, 1/8f);
+                        // 向左旋转45度，参数为正则向右旋转
+                        matrix.postRotate(-90);
+                        //bmp.getWidth(), 500分别表示重绘后的位图宽高
+                        Bitmap dstbmp = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(),
+                                matrix, true);
+
+//                        long startTime= System.currentTimeMillis(); //起始时间
+                        Vector<Box> boxes=mtcnn.detectFaces(dstbmp,100);
+                        for (int i=0;i<boxes.size();i++){
+                            Utils.drawRect(dstbmp,boxes.get(i).transform2Rect());
+                            Utils.drawPoints(dstbmp,boxes.get(i).landmark);
                         }
+
+                        long endTime = System.currentTimeMillis(); //结束时间
+
+                        long runtime = endTime - startTime;
+                        Log.i("hggg", String.format("方法使用时间 %d ms",runtime ));  //50 ms/f detect face:20ms/f
+
+                        ivPic.setImageBitmap(dstbmp);
+
+
                     }catch(Exception e){
                         e.printStackTrace();
                     }
@@ -147,6 +186,7 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
             });
         }
     }
+
 
     @Override
     public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {}
@@ -160,6 +200,3 @@ public class MainActivity extends AppCompatActivity implements TextureView.Surfa
     @Override
     public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
 }
-//————————————————
-//        版权声明：本文为CSDN博主「再学HelloWorld」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
-//        原文链接：https://blog.csdn.net/qq_17441227/article/details/82877161
